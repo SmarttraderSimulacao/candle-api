@@ -1,0 +1,238 @@
+const express = require('express');
+const http = require('http');
+const socketio = require('socket.io');
+const cors = require('cors');
+const connectDB = require('./config/db');
+const apiRoutes = require('./routes/apiRoutes');
+const competitionCandleGenerator = require('./services/competitionCandleGenerator');
+const { authenticateSocket } = require('./middleware/auth');
+require('dotenv').config();
+
+// Inicializar o app
+const app = express();
+const server = http.createServer(app);
+const io = socketio(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+// Middleware - Ordem correta importante!
+app.use(cors({
+  origin: '*',  // Em produção, defina origens específicas por segurança
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
+// Configurar middleware para processar o corpo das requisições ANTES das rotas
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Import routes
+const roomRoutes = require('./routes/roomRoutes');
+
+// Use routes
+app.use('/api', apiRoutes);
+app.use('/api', roomRoutes);
+
+app.get('/api/test-connection', (req, res) => {
+  res.status(200).json({ message: 'Connection successful!' });
+});
+
+// Rota para a página inicial
+app.get('/', (req, res) => {
+  res.sendFile(__dirname + '/public/index.html');
+});
+
+// Conectar ao banco de dados
+connectDB();
+
+// WebSocket para atualizações em tempo real
+io.on('connection', (socket) => {
+  console.log('Novo cliente conectado. ID:', socket.id);
+  
+  // Enviar o candle atual quando o cliente se conecta
+  const currentCandle = competitionCandleGenerator.getCurrentFormingCandle();
+  console.log('Enviando candle atual para o novo cliente:', JSON.stringify(currentCandle));
+  socket.emit('current_candle', currentCandle);
+  
+  // Autenticação do socket
+  socket.on('authenticate', async (token) => {
+    try {
+      await authenticateSocket(socket, () => {});
+      console.log(`Cliente ${socket.id} autenticado como ${socket.user.username}`);
+      
+      // Enviar dados do usuário
+      socket.emit('user_data', {
+        _id: socket.user._id,
+        username: socket.user.username,
+        email: socket.user.email,
+        balance: socket.user.balance
+      });
+    } catch (error) {
+      console.error(`Erro de autenticação do socket ${socket.id}:`, error.message);
+      socket.emit('auth_error', { message: error.message });
+    }
+  });
+  
+  // Entrar em uma sala
+  socket.on('join_room', async (roomId) => {
+    try {
+      if (!socket.user) {
+        socket.emit('error', { message: 'Não autenticado' });
+        return;
+      }
+      
+      // Juntar-se ao canal da sala
+      socket.join(`room:${roomId}`);
+      console.log(`Cliente ${socket.id} entrou na sala ${roomId}`);
+      
+      // Buscar ranking atual
+      const Room = require('./models/Room');
+      const room = await Room.findById(roomId);
+      
+      if (room) {
+        const ranking = room.getCurrentRanking();
+        socket.emit('room_ranking', ranking);
+      }
+    } catch (error) {
+      console.error(`Erro ao entrar na sala ${roomId}:`, error.message);
+      socket.emit('error', { message: 'Erro ao entrar na sala' });
+    }
+  });
+  
+  // Sair de uma sala
+  socket.on('leave_room', (roomId) => {
+    socket.leave(`room:${roomId}`);
+    console.log(`Cliente ${socket.id} saiu da sala ${roomId}`);
+  });
+  
+  // Enviar ordem
+  socket.on('place_order', async (orderData) => {
+    try {
+      if (!socket.user) {
+        socket.emit('error', { message: 'Não autenticado' });
+        return;
+      }
+      
+      // Importar controller
+      const tradeController = require('./controllers/tradeController');
+      
+      // Criar ordem
+      const trade = await tradeController.createTradeInternal(
+        socket.user._id,
+        orderData.roomId,
+        orderData.type,
+        orderData.size || 1,
+        competitionCandleGenerator.lastPrice
+      );
+      
+      // Confirmar para o usuário
+      socket.emit('order_confirmed', trade);
+      
+      // Atualizar o ranking da sala
+      const Room = require('./models/Room');
+      const room = await Room.findById(orderData.roomId);
+      
+      if (room) {
+        const ranking = room.getCurrentRanking();
+        io.to(`room:${orderData.roomId}`).emit('room_ranking', ranking);
+      }
+    } catch (error) {
+      console.error('Erro ao enviar ordem:', error.message);
+      socket.emit('error', { message: 'Erro ao enviar ordem' });
+    }
+  });
+  
+  socket.on('disconnect', () => {
+    console.log('Cliente desconectado. ID:', socket.id);
+  });
+});
+
+// Inicializar o gerador de candles
+console.log('Inicializando gerador de candles...');
+competitionCandleGenerator.initialize(10000);
+console.log('Gerador inicializado com preço:', competitionCandleGenerator.lastPrice);
+
+// Atualizar preço a cada 500ms e emitir para todos os clientes
+setInterval(() => {
+  try {
+    const newPrice = competitionCandleGenerator.getNextTick();
+    const currentCandle = competitionCandleGenerator.getCurrentFormingCandle();
+    
+    // Log a cada 10 segundos para não sobrecarregar o console
+    const now = Date.now();
+    if (now % 10000 < 500) {
+      console.log('Tick atualizado. Preço atual:', newPrice);
+      console.log('Candle em formação - Timeframe:', currentCandle.timeframe, 
+                  'Open:', currentCandle.open, 
+                  'Close:', currentCandle.close);
+    }
+    
+    io.emit('tick_update', {
+      price: newPrice,
+      candle: currentCandle
+    });
+  } catch (error) {
+    console.error('Erro ao gerar tick:', error);
+  }
+}, 500);
+
+// Finalizar e salvar candle a cada minuto
+setInterval(async () => {
+  try {
+    console.log('Finalizando candle atual...');
+    
+    // Especificar explicitamente o timeframe como 1
+    const timeframe = 1;
+    
+    // Finalizar o candle atual e iniciar um novo
+    const finalizedCandle = competitionCandleGenerator.finalizeCurrentCandle(timeframe);
+    
+    // Salvar no banco de dados
+    const Candle = require('./models/Candle');
+    await Candle.create(finalizedCandle);
+    
+    console.log('Candle salvo com sucesso:');
+    console.log('- Timestamp:', new Date(finalizedCandle.timestamp).toISOString());
+    console.log('- Open:', finalizedCandle.open, 'Close:', finalizedCandle.close);
+    
+    // Notificar todos os clientes sobre o novo candle
+    io.emit('new_candle', finalizedCandle);
+  } catch (error) {
+    console.error('Erro ao finalizar candle:', error);
+  }
+}, 60000); // 1 minuto
+
+// Verificar horários de competição a cada minuto
+setInterval(async () => {
+  try {
+    const result = await competitionCandleGenerator.checkCompetitionTimes();
+    
+    if (result.activeRooms && result.activeRooms.length > 0) {
+      console.log('Salas ativas:', result.activeRooms);
+      
+      // Para cada sala ativa, atualizar o ranking
+      for (const roomId of result.activeRooms) {
+        const Room = require('./models/Room');
+        const room = await Room.findById(roomId);
+        
+        if (room) {
+          const ranking = room.getCurrentRanking();
+          io.to(`room:${roomId}`).emit('room_ranking', ranking);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Erro ao verificar horários de competição:', error);
+  }
+}, 60000); // 1 minuto
+
+// Iniciar o servidor
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Servidor rodando na porta ${PORT} e aceitando conexões externas`);
+  console.log(`Timestamp de início:`, new Date().toISOString());
+});

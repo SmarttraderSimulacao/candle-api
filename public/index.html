@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador de Candles</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .price-display {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .candle-info {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .candle-list {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .candle-item {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 5px;
+        }
+        .button {
+            padding: 8px 16px;
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .status {
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .log-container {
+            height: 150px;
+            overflow-y: auto;
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            margin-bottom: 20px;
+        }
+        .up { color: #4caf50; }
+        .down { color: #f44336; }
+        .neutral { color: #2196f3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Visualizador de Candles</h1>
+        
+        <div class="status" id="connectionStatus">Status: Desconectado</div>
+        
+        <div class="header">
+            <div class="price-display">Preço Atual: <span id="currentPrice">--</span></div>
+            <button class="button" id="connectBtn">Conectar</button>
+        </div>
+        
+        <h2>Candle em Formação</h2>
+        <div class="candle-info" id="currentCandle">
+            <p>Aguardando dados...</p>
+        </div>
+        
+        <div>
+            <h2>Logs de Conexão</h2>
+            <div class="log-container" id="logContainer"></div>
+        </div>
+        
+        <div>
+            <h2>Histórico de Candles</h2>
+            <button class="button" id="loadHistoryBtn">Carregar Histórico</button>
+            <div class="candle-list" id="candleList">Clique no botão para carregar o histórico</div>
+        </div>
+    </div>
+
+    <script>
+        // Elementos DOM
+        const connectionStatusElement = document.getElementById('connectionStatus');
+        const currentPriceElement = document.getElementById('currentPrice');
+        const currentCandleElement = document.getElementById('currentCandle');
+        const logContainerElement = document.getElementById('logContainer');
+        const candleListElement = document.getElementById('candleList');
+        const connectBtn = document.getElementById('connectBtn');
+        const loadHistoryBtn = document.getElementById('loadHistoryBtn');
+        
+        // Configuração da API
+        const SERVER_URL = window.location.origin;
+        const API_URL = `${SERVER_URL}/api/candles`;
+        let socket = null;
+        
+        // Função para adicionar logs
+        function addLog(message, type = 'neutral') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = type;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logContainerElement.appendChild(logEntry);
+            logContainerElement.scrollTop = logContainerElement.scrollHeight;
+            console.log(`[${type}] ${message}`);
+        }
+        
+        // Função para formatar um candle
+        function formatCandle(candle) {
+            if (!candle) return '<p>Dados não disponíveis</p>';
+            
+            const date = new Date(candle.timestamp);
+            const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+            const isUp = candle.open <= candle.close;
+            const colorClass = isUp ? 'up' : 'down';
+            
+            return `
+                <p><strong>Timestamp:</strong> ${formattedDate}</p>
+                <p class="${colorClass}"><strong>Abertura:</strong> ${candle.open} | <strong>Fechamento:</strong> ${candle.close}</p>
+                <p><strong>Máxima:</strong> ${candle.high} | <strong>Mínima:</strong> ${candle.low}</p>
+                <p><strong>Volume:</strong> ${candle.volume}</p>
+            `;
+        }
+        
+        // Função para formatar um candle para a lista
+        function formatCandleListItem(candle) {
+            const date = new Date(candle.timestamp);
+            const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+            const isUp = candle.open <= candle.close;
+            
+            return `
+                <div class="candle-item ${isUp ? 'up' : 'down'}">
+                    <strong>${formattedDate}</strong><br>
+                    Abertura: ${candle.open} | Fechamento: ${candle.close}<br>
+                    Máxima: ${candle.high} | Mínima: ${candle.low}<br>
+                    Volume: ${candle.volume}
+                </div>
+            `;
+        }
+        
+        // Função para atualizar status de conexão
+        function updateConnectionStatus(status, type = 'neutral') {
+            connectionStatusElement.textContent = `Status: ${status}`;
+            connectionStatusElement.className = `status ${type}`;
+        }
+        
+        // Função para desconectar socket
+        function disconnectSocket() {
+            if (socket) {
+                addLog('Desconectando socket...', 'neutral');
+                socket.disconnect();
+                socket = null;
+                connectBtn.textContent = 'Conectar';
+                updateConnectionStatus('Desconectado', 'down');
+            }
+        }
+        
+        // Função para conectar ao servidor
+        function connectSocket() {
+            if (socket) {
+                disconnectSocket();
+                return;
+            }
+            
+            addLog('Conectando ao servidor...', 'neutral');
+            updateConnectionStatus('Conectando...', 'neutral');
+            connectBtn.textContent = 'Desconectar';
+            
+            try {
+                // Inicializar Socket.io
+                socket = io(SERVER_URL, {
+                    transports: ['websocket', 'polling'],
+                    reconnectionAttempts: 5,
+                    reconnectionDelay: 1000,
+                    timeout: 10000
+                });
+                
+                // Eventos de conexão
+                socket.on('connect', () => {
+                    addLog(`Conectado via ${socket.io.engine.transport.name}`, 'up');
+                    updateConnectionStatus(`Conectado via ${socket.io.engine.transport.name}`, 'up');
+                });
+                
+                socket.on('disconnect', (reason) => {
+                    addLog(`Desconectado: ${reason}`, 'down');
+                    updateConnectionStatus('Desconectado', 'down');
+                    connectBtn.textContent = 'Conectar';
+                });
+                
+                socket.on('connect_error', (error) => {
+                    addLog(`Erro de conexão: ${error.message}`, 'down');
+                    updateConnectionStatus(`Erro: ${error.message}`, 'down');
+                });
+                
+                // Eventos de dados
+                socket.on('tick_update', (data) => {
+                    currentPriceElement.textContent = data.price;
+                    currentCandleElement.innerHTML = formatCandle(data.candle);
+                });
+                
+                socket.on('current_candle', (candle) => {
+                    addLog('Candle atual recebido', 'neutral');
+                    currentPriceElement.textContent = candle.close;
+                    currentCandleElement.innerHTML = formatCandle(candle);
+                });
+                
+                socket.on('new_candle', (candle) => {
+                    addLog('Novo candle finalizado recebido', 'up');
+                    const newCandleHtml = formatCandleListItem(candle);
+                    candleListElement.innerHTML = newCandleHtml + candleListElement.innerHTML;
+                });
+                
+            } catch (error) {
+                addLog(`Erro ao inicializar socket: ${error.message}`, 'down');
+                updateConnectionStatus(`Erro: ${error.message}`, 'down');
+                connectBtn.textContent = 'Conectar';
+            }
+        }
+        
+        // Função para carregar histórico de candles
+        async function loadCandleHistory() {
+            try {
+                candleListElement.innerHTML = 'Carregando...';
+                addLog('Carregando histórico de candles...', 'neutral');
+                
+                const response = await fetch(`${API_URL}/history?limit=20`);
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP: ${response.status}`);
+                }
+                
+                const candles = await response.json();
+                
+                if (candles.length === 0) {
+                    candleListElement.innerHTML = 'Nenhum candle encontrado.';
+                    return;
+                }
+                
+                addLog(`${candles.length} candles carregados`, 'up');
+                
+                candleListElement.innerHTML = '';
+                candles.forEach(candle => {
+                    candleListElement.innerHTML += formatCandleListItem(candle);
+                });
+                
+            } catch (error) {
+                addLog(`Erro ao carregar histórico: ${error.message}`, 'down');
+                candleListElement.innerHTML = `Erro ao carregar histórico: ${error.message}`;
+            }
+        }
+        
+        // Event listeners
+        connectBtn.addEventListener('click', connectSocket);
+        loadHistoryBtn.addEventListener('click', loadCandleHistory);
+        
+        // Limpar conexão ao fechar a página
+        window.addEventListener('beforeunload', () => {
+            disconnectSocket();
+        });
+        
+        // Inicialização
+        addLog('Cliente inicializado', 'neutral');
+    </script>
+</body>
+</html>
