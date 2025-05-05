@@ -19,6 +19,10 @@ router.post('/rooms', adminController.createRoom);
 router.put('/rooms/:id/status', adminController.updateRoomStatus);
 router.post('/rooms/:id/process-payments', adminController.processRoomPayments);
 
+// Novas rotas para relatório de pagamentos
+router.get('/rooms/:id/winners', adminController.getRoomWinners);
+router.put('/rooms/:id/update-payment-status', adminController.updatePaymentStatus);
+
 // Rotas de relatórios
 router.get('/reports/competitions', adminController.getCompetitionsReport);
 
