@@ -14,7 +14,7 @@ const generateToken = (id) => {
 exports.register = async (req, res) => {
   console.log('Requisição de cadastro recebida:', req.body); // <--- LOG ADICIONADO
   try {
-    const { username, email, password, pixKey } = req.body;
+    const { username, phoneNumber, email, password, pixKey } = req.body;
 
     // Verificar se o usuário já existe
     const userExists = await User.findOne({
@@ -35,6 +35,7 @@ exports.register = async (req, res) => {
     // Criar usuário
     const user = await User.create({
       username,
+      phoneNumber,
       email,
       password,
       pixKey
@@ -51,6 +52,7 @@ exports.register = async (req, res) => {
       user: {
         _id: user._id,
         username: user.username,
+        phoneNumber: user.phoneNumber,
         email: user.email,
         pixKey: user.pixKey,
         balance: user.balance,
@@ -103,6 +105,7 @@ exports.login = async (req, res) => {
       user: {
         _id: user._id,
         username: user.username,
+        phoneNumber: user.phoneNumber,
         email: user.email,
         pixKey: user.pixKey,
         balance: user.balance,
@@ -138,6 +141,7 @@ exports.getMe = async (req, res) => {
       user: {
         _id: user._id,
         username: user.username,
+        phoneNumber: user.phoneNumber,
         email: user.email,
         pixKey: user.pixKey,
         balance: user.balance,
@@ -160,11 +164,12 @@ exports.getMe = async (req, res) => {
 // @access  Private
 exports.updateMe = async (req, res) => {
   try {
-    const { username, email, pixKey } = req.body;
+    const { username, phoneNumber, email, pixKey } = req.body;
 
     // Construir objeto de atualização
     const updateFields = {};
     if (username) updateFields.username = username;
+    if (phoneNumber) updateFields.phoneNumber = phoneNumber;
     if (email) updateFields.email = email;
     if (pixKey) updateFields.pixKey = pixKey;
 
@@ -187,6 +192,7 @@ exports.updateMe = async (req, res) => {
       user: {
         _id: user._id,
         username: user.username,
+        phoneNumber: user.phoneNumber,
         email: user.email,
         pixKey: user.pixKey,
         balance: user.balance,
@@ -227,40 +233,6 @@ exports.uploadDocument = (req, res) => {
       message: 'Documento enviado com sucesso',
       url: fileUrl
     });
-    
-    /* Original code that requires authentication:
-    // If we have authentication and want to associate the document with a user:
-    if (req.user && req.user.id) {
-      // Update user with document URL
-      User.findByIdAndUpdate(
-        req.user.id,
-        { documentUrl: fileUrl },
-        { new: true }
-      )
-        .then(() => {
-          res.status(200).json({
-            success: true,
-            message: 'Documento enviado com sucesso',
-            url: fileUrl
-          });
-        })
-        .catch(err => {
-          console.error('Erro ao atualizar usuário com URL do documento:', err);
-          res.status(500).json({
-            success: false,
-            message: 'Erro ao atualizar usuário com URL do documento'
-          });
-        });
-    } else {
-      // If no user is authenticated, just return the URL
-      res.status(200).json({
-        success: true,
-        message: 'Documento enviado com sucesso (sem autenticação)',
-        url: fileUrl
-      });
-    }
-    */
-    
   } catch (error) {
     console.error('Erro ao fazer upload do documento:', error);
     res.status(500).json({
