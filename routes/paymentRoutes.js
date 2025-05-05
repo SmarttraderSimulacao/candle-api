@@ -245,7 +245,7 @@ router.post('/webhook', async (req, res) => {
                 
                 // Recalcular prêmio total
                 if (room.entryFee > 0) {
-                  room.totalPrizePool = Math.floor(room.entryFee * room.participants.length * 0.8);
+                  room.totalPrizePool = Math.floor(room.entryFee * room.participants.length * 0.7);
                 }
                 
                 await room.save();
