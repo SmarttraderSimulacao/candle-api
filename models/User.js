@@ -9,6 +9,15 @@ const UserSchema = new mongoose.Schema({
     trim: true,
     maxlength: [50, 'Nome de usuário não pode ter mais de 50 caracteres']
   },
+  phoneNumber: {
+    type: String,
+    required: [true, 'Por favor, informe um número de telefone'],
+    trim: true,
+    match: [
+      /^\(\d{2}\) \d{8,9}$/,
+      'Por favor, informe um telefone no formato (XX) XXXXXXXXX'
+    ]
+  },
   email: {
     type: String,
     required: [true, 'Por favor, informe um email'],
