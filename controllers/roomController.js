@@ -96,8 +96,8 @@ if (rooms.length === 0) {
       
       let prizePool = room.totalPrizePool;
       if (room.entryFee > 0 && participantCount > 0) {
-        // Corrigir para usar 80% em vez de 50%
-        prizePool = Math.floor(room.entryFee * participantCount * 0.8);
+        // Corrigir para usar 70% em vez de 80%
+        prizePool = Math.floor(room.entryFee * participantCount * 0.7);
       }
       
       return {
@@ -150,7 +150,7 @@ exports.getRoomDetails = async (req, res) => {
     // Calcular prêmio com base no número real de participantes (se for sala paga)
     let prizePool = room.totalPrizePool;
     if (room.entryFee > 0 && room.participants.length > 0) {
-      prizePool = Math.floor(room.entryFee * room.participants.length * 0.8);
+      prizePool = Math.floor(room.entryFee * room.participants.length * 0.7);
     }
     
     // Verificar se ranking possui a propriedade 'ranking' e se é um array
@@ -280,7 +280,7 @@ exports.joinRoom = async (req, res) => {
     
     // Recalcular prêmio total com base no número atual de participantes
     if (room.entryFee > 0) {
-      const newPrizePool = Math.floor(room.entryFee * room.participants.length * 0.8);
+      const newPrizePool = Math.floor(room.entryFee * room.participants.length * 0.7);
       console.log('Recalculating prize pool, new value:', newPrizePool);
       room.totalPrizePool = newPrizePool;
     }
@@ -374,7 +374,7 @@ exports.updateRoomStatus = async (req, res) => {
     if (status === 'CLOSED' && room.status !== 'CLOSED') {
       // Recalcular prêmio total com base no número final de participantes
       if (room.entryFee > 0) {
-        room.totalPrizePool = Math.floor(room.entryFee * room.participants.length * 0.8);
+        room.totalPrizePool = Math.floor(room.entryFee * room.participants.length * 0.7);
       }
       
       await calculateWinners(room);
@@ -401,7 +401,7 @@ exports.updateRoomStatus = async (req, res) => {
 async function calculateWinners(room) {
   // Recalcular prêmio total com base no número final de participantes
   if (room.entryFee > 0) {
-    room.totalPrizePool = Math.floor(room.entryFee * room.participants.length * 0.8);
+    room.totalPrizePool = Math.floor(room.entryFee * room.participants.length * 0.7);
   }
   
   // Obter ranking final
