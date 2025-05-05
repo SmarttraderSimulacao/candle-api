@@ -723,3 +723,133 @@ exports.getAdminStats = async (req, res) => {
     });
   }
 };
+
+/**
+ * @desc    Obter vencedores de uma sala com informações para pagamento
+ * @route   GET /api/admin/rooms/:id/winners
+ * @access  Private/Admin
+ */
+exports.getRoomWinners = async (req, res) => {
+  try {
+    const roomId = req.params.id;
+    const room = await Room.findById(roomId)
+      .populate('winners.userId', 'username pixKey');
+    
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: 'Sala não encontrada'
+      });
+    }
+    
+    // Verificar se a sala está fechada
+    if (room.status !== 'CLOSED') {
+      return res.status(400).json({
+        success: false,
+        message: 'Esta sala ainda não foi encerrada'
+      });
+    }
+    
+    const winners = room.winners.map(winner => {
+      const userData = winner.userId || {};
+      return {
+        position: winner.position,
+        userId: userData._id || winner.userId,
+        username: userData.username || "Usuário desconhecido",
+        pixKey: userData.pixKey || "Não informada",
+        prize: winner.prize,
+        paid: winner.paid || false
+      };
+    });
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        roomId: room._id,
+        roomName: room.name,
+        totalPrizePool: room.totalPrizePool,
+        winners
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao buscar vencedores para pagamento:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar vencedores para pagamento',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * @desc    Atualizar status de pagamento dos vencedores
+ * @route   PUT /api/admin/rooms/:id/update-payment-status
+ * @access  Private/Admin
+ */
+exports.updatePaymentStatus = async (req, res) => {
+  try {
+    const roomId = req.params.id;
+    const { winners } = req.body;
+    
+    if (!winners || !Array.isArray(winners)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Lista de vencedores inválida'
+      });
+    }
+    
+    const room = await Room.findById(roomId);
+    
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: 'Sala não encontrada'
+      });
+    }
+    
+    // Verificar se a sala está fechada
+    if (room.status !== 'CLOSED') {
+      return res.status(400).json({
+        success: false,
+        message: 'Esta sala ainda não foi encerrada'
+      });
+    }
+    
+    // Atualizar status de pagamento para cada vencedor
+    for (const updatedWinner of winners) {
+      const winner = room.winners.find(w => 
+        w.userId.toString() === updatedWinner.userId
+      );
+      
+      if (winner) {
+        winner.paid = updatedWinner.paid;
+      }
+    }
+    
+    await room.save();
+    
+    // Registrar ação para auditoria
+    console.log(`Status de pagamento de vencedores da sala "${room.name}" atualizado por ${req.user.username}`);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Status de pagamento atualizado com sucesso',
+      data: {
+        roomId: room._id,
+        roomName: room.name,
+        winners: room.winners.map(winner => ({
+          userId: winner.userId,
+          position: winner.position,
+          paid: winner.paid
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar status de pagamento:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao atualizar status de pagamento',
+      error: error.message
+    });
+  }
+};
