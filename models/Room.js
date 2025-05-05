@@ -136,8 +136,8 @@ const RoomSchema = new mongoose.Schema({
 
 // Método para calcular o prêmio total
 RoomSchema.methods.calculatePrizePool = function() {
-  // 80% das entradas vão para o prêmio (20% taxa admin)
-  return Math.floor(this.entryFee * this.participants.length * 0.8);
+  // 70% das entradas vão para o prêmio (30% taxa admin)
+  return Math.floor(this.entryFee * this.participants.length * 0.7);
 };
 
 // Método para verificar se a sala está cheia
