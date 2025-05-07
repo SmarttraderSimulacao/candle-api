@@ -233,9 +233,9 @@ class CompetitionCandleGenerator extends CandleGenerator {
     console.log(`[DEBUG_END] Estado dos participantes após fechar posições:`);
     console.log(JSON.stringify(participantsAfterClose));
     
-    // Calcular prêmio baseado em 80% das entradas
+    // Calcular prêmio baseado em 70% das entradas
     if (room.entryFee > 0) {
-      room.totalPrizePool = Math.floor(room.entryFee * room.participants.length * 0.8);
+      room.totalPrizePool = Math.floor(room.entryFee * room.participants.length * 0.7);
     }
     
     // Obter ranking atual e definir vencedores
@@ -247,25 +247,28 @@ class CompetitionCandleGenerator extends CandleGenerator {
     
     // Calcular prêmios conforme distribuição configurada
     if (ranking.ranking && ranking.ranking.length > 0) {
-      for (let i = 0; i < Math.min(7, ranking.ranking.length); i++) {
-        const position = i + 1;
-        const distribution = room.prizeDistribution.find(d => d.position === position) || 
-                           { position, percentage: 0 };
-        const percentage = distribution.percentage;
-        const prize = Math.floor(room.totalPrizePool * (percentage / 100));
-        
-        if (ranking.ranking[i]) {
-          winners.push({
-            position,
-            userId: ranking.ranking[i].userId,
-            username: ranking.ranking[i].username,
-            finalCapital: ranking.ranking[i].capital,
-            prize,
-            paid: false
-          });
-        }
-      }
+  // Obter distribuição ajustada com base no número de participantes
+  const adjustedDistribution = room.getAdjustedPrizeDistribution();
+  console.log(`[DEBUG_END] Distribuição ajustada: ${JSON.stringify(adjustedDistribution)}`);
+  
+  // Aplicar distribuição ajustada para os vencedores
+  for (let i = 0; i < Math.min(adjustedDistribution.length, ranking.ranking.length); i++) {
+    const position = adjustedDistribution[i].position;
+    const percentage = adjustedDistribution[i].percentage;
+    const prize = Math.floor(room.totalPrizePool * (percentage / 100));
+    
+    if (ranking.ranking[i]) {
+      winners.push({
+        position,
+        userId: ranking.ranking[i].userId,
+        username: ranking.ranking[i].username,
+        finalCapital: ranking.ranking[i].capital,
+        prize,
+        paid: false
+      });
     }
+  }
+}
     
     room.winners = winners;
     
