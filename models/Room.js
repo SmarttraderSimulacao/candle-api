@@ -114,20 +114,18 @@ const RoomSchema = new mongoose.Schema({
     default: 0
   },
   prizeDistribution: {
-    type: [{
-      position: Number,
-      percentage: Number
-    }],
-    default: [
-      { position: 1, percentage: 35 },
-      { position: 2, percentage: 25 },
-      { position: 3, percentage: 15 },
-      { position: 4, percentage: 10 },
-      { position: 5, percentage: 7 },
-      { position: 6, percentage: 5 },
-      { position: 7, percentage: 3 }
-    ]
-  },
+  type: [{
+    position: Number,
+    percentage: Number
+  }],
+  default: [
+    { position: 1, percentage: 35 },
+    { position: 2, percentage: 25 },
+    { position: 3, percentage: 15 },
+    { position: 4, percentage: 10 },
+    { position: 5, percentage: 15 }  // Ajustado para que a soma seja 100%
+  ]
+},
   createdAt: {
     type: Date,
     default: Date.now
@@ -138,6 +136,55 @@ const RoomSchema = new mongoose.Schema({
 RoomSchema.methods.calculatePrizePool = function() {
   // 70% das entradas vão para o prêmio (30% taxa admin)
   return Math.floor(this.entryFee * this.participants.length * 0.7);
+};
+
+// NOVO MÉTODO: Ajustar a distribuição de prêmios com base no número de participantes
+RoomSchema.methods.getAdjustedPrizeDistribution = function() {
+  // Obter o número de participantes
+  const participantsCount = this.participants.length;
+  
+  // Se não houver participantes, retornar array vazio
+  if (participantsCount === 0) {
+    return [];
+  }
+  
+  // Se houver apenas um participante, ele leva 100%
+  if (participantsCount === 1) {
+    return [{ position: 1, percentage: 100 }];
+  }
+  
+  // Definir a distribuição padrão para 5 posições
+  const defaultDistribution = [
+    { position: 1, percentage: 35 },
+    { position: 2, percentage: 25 },
+    { position: 3, percentage: 15 },
+    { position: 4, percentage: 10 },
+    { position: 5, percentage: 7 }
+  ];
+  
+  // Recortar a distribuição para o número de participantes
+  let adjustedDistribution = defaultDistribution.slice(0, participantsCount);
+  
+  // Calcular a soma das porcentagens na distribuição ajustada
+  const totalPercentage = adjustedDistribution.reduce((sum, item) => sum + item.percentage, 0);
+  
+  // Se o total for menos que 100%, ajustar proporcionalmente
+  if (totalPercentage < 100) {
+    const multiplier = 100 / totalPercentage;
+    adjustedDistribution = adjustedDistribution.map(item => ({
+      position: item.position,
+      percentage: Math.round(item.percentage * multiplier)
+    }));
+    
+    // Garantir que a soma seja exatamente 100%
+    let currentTotal = adjustedDistribution.reduce((sum, item) => sum + item.percentage, 0);
+    if (currentTotal !== 100) {
+      // Ajustar a primeira posição para garantir que o total seja 100%
+      adjustedDistribution[0].percentage += (100 - currentTotal);
+    }
+  }
+  
+  return adjustedDistribution;
 };
 
 // Método para verificar se a sala está cheia
@@ -152,10 +199,13 @@ RoomSchema.methods.getCurrentRanking = function() {
   });
   
   const rankingItems = sortedParticipants.map((participant, index) => {
+    // Aqui precisamos obter o usuário para ter acesso ao nickname
+    // Como não podemos fazer uma operação assíncrona aqui, usamos o username
+    // Mas faremos a adaptação no socket quando enviarmos o ranking
     return {
       position: index + 1,
       userId: participant.userId,
-      username: participant.username,
+      username: participant.username, // Mantemos username para compatibilidade
       capital: participant.currentCapital,
       profitPercentage: ((participant.currentCapital / participant.initialCapital) - 1) * 100
     };
@@ -169,7 +219,6 @@ RoomSchema.methods.getCurrentRanking = function() {
     updatedAt: Date.now()
   };
 };
-
 // NOVO MÉTODO: Verificar se a sala deve estar ativa com base no horário atual
 RoomSchema.methods.shouldBeActive = function() {
   // Obter data e hora atual
@@ -255,4 +304,50 @@ RoomSchema.methods.closeAllActiveTrades = async function(providedPrice) {
   
   return modified;
 };
+
+// NOVO MÉTODO: Finalizar competição e distribuir prêmios
+RoomSchema.methods.finalizeCompetition = function() {
+  // Só finalizar se a sala estiver ativa
+  if (this.status !== 'ACTIVE') {
+    return false;
+  }
+  
+  // Ordenar participantes por capital atual (decrescente)
+  const sortedParticipants = [...this.participants].sort((a, b) => b.currentCapital - a.currentCapital);
+  
+  // Obter distribuição ajustada de prêmios
+  const prizeDistribution = this.getAdjustedPrizeDistribution();
+  
+  // Calcular o prêmio total
+  const totalPrizePool = this.calculatePrizePool();
+  
+  // Lista para armazenar os vencedores
+  const winners = [];
+  
+  // Distribuir prêmios de acordo com a posição
+  prizeDistribution.forEach((prize, index) => {
+    if (index < sortedParticipants.length) {
+      const participant = sortedParticipants[index];
+      const prizeAmount = (totalPrizePool * prize.percentage) / 100;
+      
+      winners.push({
+        position: prize.position,
+        userId: participant.userId,
+        username: participant.username,
+        finalCapital: participant.currentCapital,
+        prize: prizeAmount,
+        paid: false
+      });
+    }
+  });
+  
+  // Atualizar os vencedores na sala
+  this.winners = winners;
+  
+  // Marcar a sala como encerrada
+  this.status = 'CLOSED';
+  
+  return true;
+};
+
 module.exports = mongoose.model('Room', RoomSchema);
