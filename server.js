@@ -48,6 +48,11 @@ app.use('/api', tradeRoutes);
 // Rotas administrativas
 const adminRoutes = require('./routes/adminRoutes');
 app.use('/api/admin', adminRoutes);
+// Rotas de usuário
+const userRoutes = require('./routes/userRoutes');
+app.use('/api', userRoutes);
+
+
 
 // MODIFICAÇÃO: Rotas de pagamento - adicionando o console.log para debug
 const paymentRoutes = require('./routes/paymentRoutes');
