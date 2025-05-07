@@ -133,6 +133,9 @@ if (rooms.length === 0) {
 // @desc    Obter uma sala específica
 // @route   GET /api/rooms/:id
 // @access  Public
+// @desc    Obter uma sala específica
+// @route   GET /api/rooms/:id
+// @access  Public
 exports.getRoomDetails = async (req, res) => {
   try {
     const room = await Room.findById(req.params.id);
@@ -163,6 +166,21 @@ exports.getRoomDetails = async (req, res) => {
       console.log('Aviso: formato de ranking inesperado:', JSON.stringify(ranking));
     }
     
+    // MODIFICAÇÃO: Adicionar informações dos vencedores se a sala estiver encerrada
+    let winners = [];
+    if (room.status === 'CLOSED' && room.winners && room.winners.length > 0) {
+      winners = room.winners.map(winner => ({
+        position: winner.position,
+        userId: winner.userId,
+        username: winner.username,
+        finalCapital: winner.finalCapital,
+        prize: winner.prize,
+        paid: winner.paid || false
+      }));
+      
+      console.log('Vencedores encontrados para sala encerrada:', winners.length);
+    }
+    
     res.status(200).json({
       success: true,
       data: {
@@ -178,7 +196,8 @@ exports.getRoomDetails = async (req, res) => {
         status: room.status,
         totalPrizePool: prizePool,
         prizeDistribution: room.prizeDistribution,
-        ranking: topRanking // Usa o ranking já tratado
+        ranking: topRanking, // Usa o ranking já tratado
+        winners: winners // MODIFICAÇÃO: Adiciona os vencedores na resposta
       }
     });
   } catch (error) {
@@ -232,13 +251,12 @@ exports.joinRoom = async (req, res) => {
     }
     
     // Verificar se a sala ainda aceita inscrições
-    // NOTA: Modificado para aceitar inscrições em salas ACTIVE também para facilitar testes
-    if (room.status !== 'PENDING' && room.status !== 'ACTIVE') {
-      console.log('Room status is not PENDING or ACTIVE, current status:', room.status);
-      return res.status(400).json({
-        success: false,
-        message: 'Esta sala não aceita mais inscrições'
-      });
+    if (room.status !== 'PENDING') {
+    console.log('Room status is not PENDING, current status:', room.status);
+    return res.status(400).json({
+    success: false,
+    message: 'Esta sala não aceita mais inscrições'
+    });
     }
     
     // Verificar se o usuário tem saldo suficiente
@@ -419,21 +437,24 @@ async function calculateWinners(room) {
   const winners = [];
   
   // Calcular prêmios para os 7 primeiros de acordo com a distribuição
-  for (let i = 0; i < Math.min(7, ranking.length); i++) {
-    const position = i + 1;
-    const distribution = room.prizeDistribution.find(d => d.position === position);
-    const percentage = distribution ? distribution.percentage : 0;
-    const prize = Math.floor(room.totalPrizePool * (percentage / 100));
-    
-    winners.push({
-      position,
-      userId: ranking[i].userId,
-      username: ranking[i].username,
-      finalCapital: ranking[i].capital,
-      prize,
-      paid: false
-    });
-  }
+  const adjustedDistribution = room.getAdjustedPrizeDistribution();
+console.log(`Distribuição ajustada: ${JSON.stringify(adjustedDistribution)}`);
+
+// Calcular prêmios de acordo com a distribuição ajustada
+for (let i = 0; i < Math.min(adjustedDistribution.length, ranking.length); i++) {
+  const position = adjustedDistribution[i].position;
+  const percentage = adjustedDistribution[i].percentage;
+  const prize = Math.floor(room.totalPrizePool * (percentage / 100));
+  
+  winners.push({
+    position,
+    userId: ranking[i].userId,
+    username: ranking[i].username,
+    finalCapital: ranking[i].capital,
+    prize,
+    paid: false
+  });
+}
   
   room.winners = winners;
 }
