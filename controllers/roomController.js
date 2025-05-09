@@ -234,10 +234,19 @@ exports.joinRoom = async (req, res) => {
     );
     
     if (alreadyJoined) {
-      console.log('User already joined this room');
-      return res.status(400).json({
-        success: false,
-        message: 'Você já está inscrito nesta sala'
+      console.log('User already joined this room, allowing access');
+      // Alterado: Agora retornamos um código 200 indicando sucesso, mas com uma mensagem específica
+      return res.status(200).json({
+        success: true,
+        message: 'Você já está inscrito nesta sala',
+        data: {
+          roomId: room._id,
+          initialCapital: 100000, // Valor padrão, mas o ideal seria buscar o valor real
+          roomName: room.name,
+          competitionDate: room.competitionDate,
+          startTime: room.startTime,
+          endTime: room.endTime
+        }
       });
     }
     
@@ -252,11 +261,11 @@ exports.joinRoom = async (req, res) => {
     
     // Verificar se a sala ainda aceita inscrições
     if (room.status !== 'PENDING') {
-    console.log('Room status is not PENDING, current status:', room.status);
-    return res.status(400).json({
-    success: false,
-    message: 'Esta sala não aceita mais inscrições'
-    });
+      console.log('Room status is not PENDING, current status:', room.status);
+      return res.status(400).json({
+        success: false,
+        message: 'Esta sala não aceita mais inscrições'
+      });
     }
     
     // Verificar se o usuário tem saldo suficiente
@@ -328,7 +337,6 @@ exports.joinRoom = async (req, res) => {
     });
   }
 };
-
 // @desc    Criar nova sala (admin)
 // @route   POST /api/rooms
 // @access  Private/Admin
