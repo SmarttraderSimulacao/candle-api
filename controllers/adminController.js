@@ -854,7 +854,7 @@ exports.updatePaymentStatus = async (req, res) => {
       error: error.message
     });
   }
-=======
+
 const User = require('../models/User');
 const Room = require('../models/Room');
 const Trade = require('../models/Trade');
