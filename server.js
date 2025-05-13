@@ -506,11 +506,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('leave_room', (roomId) => {
-    socket.leave(`room:${roomId}`);
-    console.log(`Cliente ${socket.id} saiu da sala ${roomId}`);
-  });
-
   socket.on('place_order', async (orderData) => {
   console.log('===== ORDEM RECEBIDA =====');
   console.log('Cliente:', socket.id);
@@ -581,11 +576,14 @@ io.on('connection', (socket) => {
           // Processar ordem usando o userId fornecido
           const tradeController = require('./controllers/tradeController');
           
+          // Garantir que size seja um número válido ou usar valor padrão 1
+          const size = parseFloat(orderData.size) || 1;
+          
           const trade = await tradeController.createTradeInternal(
             user._id,
             orderData.roomId,
             orderData.type,
-            orderData.size || 1,
+            size,
             competitionCandleGenerator.lastPrice
           );
           
@@ -666,11 +664,14 @@ io.on('connection', (socket) => {
     
     const tradeController = require('./controllers/tradeController');
     
+    // Garantir que size seja um número válido ou usar valor padrão 1
+    const size = parseFloat(orderData.size) || 1;
+    
     const trade = await tradeController.createTradeInternal(
       socket.user._id,
       orderData.roomId,
       orderData.type,
-      orderData.size || 1,
+      size,
       competitionCandleGenerator.lastPrice
     );
     
