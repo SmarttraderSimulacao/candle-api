@@ -489,7 +489,7 @@ exports.getUserTrades = async (req, res) => {
 
 // Método interno para uso pelos serviços
 exports.createTradeInternal = async (userId, roomId, type, size, currentPrice) => {
-  console.log(`[LOG] Criando trade interno: userId=${userId}, roomId=${roomId}, type=${type}, price=${currentPrice}`);
+  console.log(`[LOG] Criando trade interno: userId=${userId}, roomId=${roomId}, type=${type}, price=${currentPrice}, size=${size}`);
 
   try {
     // Verificar se a sala existe
@@ -500,8 +500,8 @@ exports.createTradeInternal = async (userId, roomId, type, size, currentPrice) =
 
     // Verificar se a sala está ativa
     if (room.status !== 'ACTIVE') {
-  throw new Error('Esta sala não está ativa. Operações só são permitidas em salas ativas.');
-}
+      throw new Error('Esta sala não está ativa. Operações só são permitidas em salas ativas.');
+    }
 
     // Verificar se o usuário está inscrito na sala
     let participant = room.participants.find(
@@ -601,6 +601,16 @@ exports.createTradeInternal = async (userId, roomId, type, size, currentPrice) =
         console.log(`[LOG] Nenhuma operação aberta para fechar para o usuário ${userId}`);
         return { message: 'Nenhuma operação aberta para fechar' };
       }
+    }
+    
+    // VALIDAÇÃO DE CAPITAL: Verificar se o usuário tem capital suficiente para a operação
+    // Cálculo do valor total da operação (preço atual * quantidade)
+    const operationValue = currentPrice * size;
+    
+    // Verificar se o usuário tem capital suficiente
+    if (participant.currentCapital < operationValue) {
+      console.log(`[ERROR] Capital insuficiente: usuário tem ${participant.currentCapital}, mas precisa de ${operationValue} para comprar ${size} ações`);
+      throw new Error(`Capital insuficiente. Você tem ${participant.currentCapital.toFixed(2)}, mas precisa de ${operationValue.toFixed(2)} para esta operação.`);
     }
     
     // Se for uma nova operação (LONG ou SHORT)
