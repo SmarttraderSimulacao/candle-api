@@ -327,6 +327,11 @@ exports.getRoomDetails = async (req, res) => {
  * @route   POST /api/admin/rooms
  * @access  Private/Admin
  */
+/**
+ * @desc    Criar nova sala
+ * @route   POST /api/admin/rooms
+ * @access  Private/Admin
+ */
 exports.createRoom = async (req, res) => {
   try {
     const { 
@@ -348,28 +353,54 @@ exports.createRoom = async (req, res) => {
       });
     }
     
-    // Criar sala
+    // Obter hora atual para ajustar os horários se necessário
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    
+    // Formatar hora atual como string HH:MM
+    const currentTimeStr = `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`;
+    
+    // Determinar os horários da sala
+    // Se nenhum startTime for fornecido, usar o horário atual para TODAS as salas
+    // Se nenhum endTime for fornecido, usar 23:59 para TODAS as salas
+    // Isso garante consistência entre salas pagas e gratuitas
+    const roomStartTime = startTime || currentTimeStr;
+    const roomEndTime = endTime || '23:59';
+    
+    // Determinar a data da competição
+    const roomCompetitionDate = competitionDate || new Date();
+    
+    // Log para debug
+    console.log(`Criando sala "${name}" com configurações:`);
+    console.log(`- Taxa: ${entryFee || 0}`);
+    console.log(`- Data: ${roomCompetitionDate}`);
+    console.log(`- Horário: ${roomStartTime} - ${roomEndTime}`);
+    console.log(`- Status inicial: ${status || 'PENDING'}`);
+    
+    // Criar sala com configurações consistentes
     const room = await Room.create({
       name,
       entryFee: entryFee || 0,
       capacity: capacity || 25,
-      competitionDate: competitionDate || new Date(),
-      startTime: startTime || '00:00',
-      endTime: endTime || '23:59',
+      competitionDate: roomCompetitionDate,
+      startTime: roomStartTime,
+      endTime: roomEndTime,
       status: status || 'PENDING',
       prizeDistribution: prizeDistribution || [
-  { position: 1, percentage: 40 },
-  { position: 2, percentage: 25 },
-  { position: 3, percentage: 17 },
-  { position: 4, percentage: 10 },
-  { position: 5, percentage: 8 }
-],
+        { position: 1, percentage: 40 },
+        { position: 2, percentage: 25 },
+        { position: 3, percentage: 17 },
+        { position: 4, percentage: 10 },
+        { position: 5, percentage: 8 }
+      ],
       // Definir o prêmio inicial
       totalPrizePool: entryFee === 0 ? 30 : 0 // Prêmio inicial para salas pagas será calculado dinamicamente
     });
     
     // Registrar ação para auditoria
     console.log(`Sala "${room.name}" criada por ${req.user.username}`);
+    console.log(`Sala será verificada pelo sistema na próxima execução do checkCompetitionTimes()`);
     
     res.status(201).json({
       success: true,
