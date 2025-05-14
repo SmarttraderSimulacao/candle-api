@@ -53,10 +53,28 @@ async checkCompetitionTimes() {
       console.log(`\n== Sala: ${room.name} (${room._id}) ==`);
       console.log(`Status atual: ${room.status}`);
       
-      // Extrair apenas a data (sem hora) da data da competição
-      const roomDate = new Date(room.competitionDate);
-      const roomDateOnly = new Date(roomDate.getFullYear(), roomDate.getMonth(), roomDate.getDate());
-      console.log(`Data da competição: ${roomDateOnly.toLocaleDateString()}`);
+      // MODIFICAÇÃO IMPORTANTE: Tratamento mais robusto da data de competição
+      // Adicionar logs para diagnóstico da data original antes de qualquer processamento
+      console.log(`Data original da sala: ${room.competitionDate}`);
+      console.log(`Tipo da data original: ${typeof room.competitionDate}`);
+
+      // Garantir que a data seja tratada como string para evitar problemas de timezone
+      let roomDateString;
+      if (typeof room.competitionDate === 'string') {
+        roomDateString = room.competitionDate;
+      } else {
+        roomDateString = room.competitionDate.toISOString();
+      }
+
+      // Extrair apenas a parte da data (YYYY-MM-DD)
+      const datePart = roomDateString.split('T')[0];
+      console.log(`Parte da data extraída: ${datePart}`);
+
+      // Criar data a partir da string para comparação
+      const [year, month, day] = datePart.split('-').map(Number);
+      const roomDateOnly = new Date(year, month - 1, day); // Mês em JS é base 0 (janeiro = 0)
+      console.log(`Data reconstruída para comparação: ${roomDateOnly.toLocaleDateString()}`);
+      
       console.log(`Horários configurados: Início ${room.startTime}, Fim ${room.endTime}`);
       console.log(`Horário atual: ${currentHour}:${currentMinute < 10 ? '0' + currentMinute : currentMinute}`);
       
