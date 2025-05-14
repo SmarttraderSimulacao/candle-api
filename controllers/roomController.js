@@ -20,7 +20,7 @@ exports.getAllRooms = async (req, res) => {
     
     console.log('Date parameter:', date);
     
-    // Primeiro tentamos buscar salas para a data solicitada
+    // MODIFICAÇÃO: Filtrar por data apenas se uma data específica for solicitada
     if (date) {
       const startDate = new Date(date);
       startDate.setHours(0, 0, 0, 0);
@@ -34,23 +34,9 @@ exports.getAllRooms = async (req, res) => {
         $gte: startDate,
         $lte: endDate
       };
-    } else {
-      // Se nenhuma data for fornecida, usa a data atual
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      
-      console.log('No date provided, using today:', today);
-      
-      query.competitionDate = {
-        $gte: today,
-        $lt: tomorrow
-      };
     }
     
-    console.log('Initial query:', JSON.stringify(query));
+     console.log('Initial query:', JSON.stringify(query));
     
     let rooms = await Room.find(query)
       .select('name entryFee capacity participants competitionDate startTime endTime status totalPrizePool')
