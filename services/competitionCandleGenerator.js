@@ -19,112 +19,132 @@ class CompetitionCandleGenerator extends CandleGenerator {
   }
 
   // Método aprimorado para verificar salas por horário
-  async checkCompetitionTimes() {
-    try {
-      const now = new Date();
-      const currentHour = now.getHours();
-      const currentMinute = now.getMinutes();
-      const currentTimeMinutes = currentHour * 60 + currentMinute;
+  // Método aprimorado para verificar salas por horário e data
+async checkCompetitionTimes() {
+  try {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTimeMinutes = currentHour * 60 + currentMinute;
+    
+    console.log(`====== VERIFICAÇÃO DE HORÁRIOS DE SALAS [${now.toLocaleTimeString()}] ======`);
+    console.log(`Horário atual em minutos desde meia-noite: ${currentTimeMinutes}`);
+    
+    // Criar uma data apenas com ano/mês/dia para comparação de datas
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    console.log(`Data atual: ${today.toISOString().split('T')[0]}`);
+    
+    // Buscar todas as salas PENDING ou ACTIVE
+    const rooms = await Room.find({
+      status: { $in: ['PENDING', 'ACTIVE'] }
+    });
+    
+    console.log(`Encontradas ${rooms.length} salas para verificar...`);
+    
+    let activatedCount = 0;
+    let closedCount = 0;
+    const activeRoomsList = [];
+    
+    for (const room of rooms) {
+      // Converter horários de início e fim para minutos desde meia-noite
+      const [startHour, startMinute] = room.startTime.split(':').map(Number);
+      const [endHour, endMinute] = room.endTime.split(':').map(Number);
       
-      console.log(`====== VERIFICAÇÃO DE HORÁRIOS DE SALAS [${now.toLocaleTimeString()}] ======`);
-      console.log(`Horário atual em minutos desde meia-noite: ${currentTimeMinutes}`);
+      console.log(`\n== Sala: ${room.name} (${room._id}) ==`);
+      console.log(`Status atual: ${room.status}`);
       
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      console.log(`Data atual: ${today.toISOString().split('T')[0]}`);
+      // Extrair apenas a data (sem hora) da data da competição
+      const roomDate = new Date(room.competitionDate);
+      const roomDateOnly = new Date(roomDate.getFullYear(), roomDate.getMonth(), roomDate.getDate());
+      console.log(`Data da competição: ${roomDateOnly.toLocaleDateString()}`);
+      console.log(`Horários configurados: Início ${room.startTime}, Fim ${room.endTime}`);
+      console.log(`Horário atual: ${currentHour}:${currentMinute < 10 ? '0' + currentMinute : currentMinute}`);
       
-      // Buscar todas as salas PENDING ou ACTIVE sem filtro de data para testes
-      const rooms = await Room.find({
-        status: { $in: ['PENDING', 'ACTIVE'] }
-      });
+      const startTimeMinutes = startHour * 60 + startMinute;
+      const endTimeMinutes = endHour * 60 + endMinute;
       
-      console.log(`Encontradas ${rooms.length} salas para verificar...`);
+      console.log(`Em minutos - Início: ${startTimeMinutes}, Fim: ${endTimeMinutes}, Atual: ${currentTimeMinutes}`);
       
-      let activatedCount = 0;
-      let closedCount = 0;
+      // NOVA VERIFICAÇÃO: Incluir a data da sala na verificação
+      // Verificar se a data da sala é hoje ou no passado (não ativar salas futuras)
+      const isToday = roomDateOnly.getTime() === today.getTime();
+      const isPast = roomDateOnly < today;
+      const isFuture = roomDateOnly > today;
       
-      for (const room of rooms) {
-        // Converter horários de início e fim para minutos desde meia-noite
-        const [startHour, startMinute] = room.startTime.split(':').map(Number);
-        const [endHour, endMinute] = room.endTime.split(':').map(Number);
-        
-        console.log(`\n== Sala: ${room.name} (${room._id}) ==`);
-        console.log(`Status atual: ${room.status}`);
-        console.log(`Data da competição: ${new Date(room.competitionDate).toLocaleDateString()}`);
-        console.log(`Horários configurados: Início ${room.startTime}, Fim ${room.endTime}`);
-        console.log(`Horário atual: ${currentHour}:${currentMinute < 10 ? '0' + currentMinute : currentMinute}`);
-        
-        const startTimeMinutes = startHour * 60 + startMinute;
-        const endTimeMinutes = endHour * 60 + endMinute;
-        
-        console.log(`Em minutos - Início: ${startTimeMinutes}, Fim: ${endTimeMinutes}, Atual: ${currentTimeMinutes}`);
-        
-        // ALTERAÇÃO IMPORTANTE: Ignorar verificação de data para ambiente de teste
-        // Verificar apenas com base no horário, não na data
-        
-        // Verificar se a sala deve ser ativada
-        const shouldActivate = room.status === 'PENDING' && 
-                             currentTimeMinutes >= startTimeMinutes && 
-                             currentTimeMinutes < endTimeMinutes;
-        console.log(`Deve ativar? ${shouldActivate}`);
-        
-        // Verificar se a sala deve ser encerrada
-        const shouldClose = room.status === 'ACTIVE' && 
-                          currentTimeMinutes >= endTimeMinutes;
-        console.log(`Deve encerrar? ${shouldClose}`);
+      console.log(`Comparação de datas - Hoje: ${isToday}, Passado: ${isPast}, Futuro: ${isFuture}`);
+      
+      // Verificar se a sala deve ser ativada
+      const shouldActivate = room.status === 'PENDING' && 
+                          (isToday && currentTimeMinutes >= startTimeMinutes && currentTimeMinutes < endTimeMinutes);
+      console.log(`Deve ativar? ${shouldActivate}`);
+      
+      // Verificar se a sala deve ser encerrada
+      const shouldClose = room.status === 'ACTIVE' && 
+                        ((isToday && currentTimeMinutes >= endTimeMinutes) || isPast);
+      console.log(`Deve encerrar? ${shouldClose}`);
 
-        if (shouldActivate) {
-          console.log(`ATIVANDO sala ${room.name} (${room._id}) pois o horário atual (${currentHour}:${currentMinute}) está dentro do período da sala`);
+      if (shouldActivate) {
+        console.log(`ATIVANDO sala ${room.name} (${room._id}) pois é para hoje e o horário atual (${currentHour}:${currentMinute}) está dentro do período da sala`);
+        try {
+          await this.startCompetition(room._id);
+          activatedCount++;
+          activeRoomsList.push(room._id.toString());
+          console.log(`Sala ${room.name} ATIVADA com sucesso!`);
+        } catch (err) {
+          console.error(`Erro ao ativar sala ${room.name} (${room._id}):`, err);
+        }
+      }
+
+      if (shouldClose) {
+        // Verificar se a sala não está no processo de encerramento
+        if (!this.roomsBeingClosed) this.roomsBeingClosed = new Set();
+        
+        const isBeingClosed = this.roomsBeingClosed.has(room._id.toString());
+        
+        if (isBeingClosed) {
+          console.log(`Sala ${room.name} (${room._id}) já está em processo de encerramento. Ignorando.`);
+        } else {
+          // Marca a sala como "em processo de encerramento"
+          this.roomsBeingClosed.add(room._id.toString());
+          
+          console.log(`ENCERRANDO sala ${room.name} (${room._id}) pois o horário atual (${currentHour}:${currentMinute}) é posterior ao horário de término ou a data já passou`);
           try {
-            await this.startCompetition(room._id);
-            activatedCount++;
-            console.log(`Sala ${room.name} ATIVADA com sucesso!`);
+            await this.endCompetition(room._id);
+            closedCount++;
+            console.log(`Sala ${room.name} ENCERRADA com sucesso!`);
           } catch (err) {
-            console.error(`Erro ao ativar sala ${room.name} (${room._id}):`, err);
-          }
-        }
-
-        if (shouldClose) {
-          // Verificar se a sala não está no processo de encerramento
-          if (!this.roomsBeingClosed) this.roomsBeingClosed = new Set();
-          
-          const isBeingClosed = this.roomsBeingClosed.has(room._id.toString());
-          
-          if (isBeingClosed) {
-            console.log(`Sala ${room.name} (${room._id}) já está em processo de encerramento. Ignorando.`);
-          } else {
-            // Marca a sala como "em processo de encerramento"
-            this.roomsBeingClosed.add(room._id.toString());
-            
-            console.log(`ENCERRANDO sala ${room.name} (${room._id}) pois o horário atual (${currentHour}:${currentMinute}) é posterior ao horário de término`);
-            try {
-              await this.endCompetition(room._id);
-              closedCount++;
-              console.log(`Sala ${room.name} ENCERRADA com sucesso!`);
-            } catch (err) {
-              console.error(`Erro ao encerrar sala ${room.name} (${room._id}):`, err);
-            } finally {
-              // Remove a sala da lista de "em processo", independentemente do resultado
-              this.roomsBeingClosed.delete(room._id.toString());
-            }
+            console.error(`Erro ao encerrar sala ${room.name} (${room._id}):`, err);
+          } finally {
+            // Remove a sala da lista de "em processo", independentemente do resultado
+            this.roomsBeingClosed.delete(room._id.toString());
           }
         }
       }
       
-      if (activatedCount > 0 || closedCount > 0) {
-        console.log(`Resumo da verificação: ${activatedCount} salas ativadas, ${closedCount} salas encerradas`);
+      // Adicionar salas que já estão ativas à lista
+      if (room.status === 'ACTIVE' && !activeRoomsList.includes(room._id.toString())) {
+        activeRoomsList.push(room._id.toString());
       }
-      
-      this.updateMarketStatus();
-      return { 
-        activeRooms: Array.from(this.activeRooms),
-        activatedCount,
-        closedCount
-      };
-    } catch (error) {
-      console.error('Erro ao verificar horários de competição:', error);
-      return { error: error.message };
     }
+    
+    if (activatedCount > 0 || closedCount > 0) {
+      console.log(`Resumo da verificação: ${activatedCount} salas ativadas, ${closedCount} salas encerradas`);
+    }
+    
+    // Atualizar o conjunto de salas ativas
+    this.activeRooms = new Set(activeRoomsList);
+    
+    this.updateMarketStatus();
+    return { 
+      activeRooms: Array.from(this.activeRooms),
+      activatedCount,
+      closedCount
+    };
+  } catch (error) {
+    console.error('Erro ao verificar horários de competição:', error);
+    return { error: error.message };
   }
+}
 
   async startCompetition(roomId) {
     try {
