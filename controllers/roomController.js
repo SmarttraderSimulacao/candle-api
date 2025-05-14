@@ -340,24 +340,45 @@ exports.joinRoom = async (req, res) => {
 // @desc    Criar nova sala (admin)
 // @route   POST /api/rooms
 // @access  Private/Admin
+// @desc    Criar nova sala (admin)
+// @route   POST /api/rooms
+// @access  Private/Admin
 exports.createRoom = async (req, res) => {
   try {
     const { name, entryFee, capacity, competitionDate, startTime, endTime, prizeDistribution } = req.body;
     
-    // Criar sala
-    const room = await Room.create({
-      name,
-      entryFee,
-      capacity: capacity || 25,
-      competitionDate,
-      startTime: startTime || '00:00', 
-      endTime: endTime || '23:59',
-      status: 'PENDING', // Corrigir para PENDING em vez de ACTIVE
-      prizeDistribution: prizeDistribution || undefined,
-      // Definir o prêmio inicial
-      // Para salas gratuitas, o prêmio é fixo
-      totalPrizePool: entryFee === 0 ? 30 : 0 // Prêmio inicial para salas pagas será calculado dinamicamente
-    });
+    // Adicionar logs para depuração da data
+    console.log("=== CRIAÇÃO DE SALA - INÍCIO ===");
+    console.log("Data recebida:", competitionDate);
+    console.log("Tipo da data:", typeof competitionDate);
+    
+    // Criar uma instância Date a partir da string de data
+    const parsedDate = new Date(competitionDate);
+    console.log("Data após parsing:", parsedDate);
+    console.log("Data ISO:", parsedDate.toISOString());
+    console.log("Data Local:", parsedDate.toString());
+    
+    // Criar sala usando a data original (sem modificação ainda)
+    // Ao criar a sala, ajustar a data para meia-noite no fuso horário correto
+const dateObj = new Date(competitionDate);
+// Garantir que estamos tratando apenas a data, sem componente de tempo
+dateObj.setHours(0, 0, 0, 0);
+
+// Criar sala usando a data ajustada
+const room = await Room.create({
+  name,
+  entryFee,
+  capacity: capacity || 25,
+  competitionDate: dateObj,  // Usar a data ajustada
+  startTime: startTime || '00:00', 
+  endTime: endTime || '23:59',
+  status: 'PENDING',
+  prizeDistribution: prizeDistribution || undefined,
+  totalPrizePool: entryFee === 0 ? 30 : 0
+});
+    
+    console.log("Sala criada com data:", room.competitionDate);
+    console.log("=== CRIAÇÃO DE SALA - FIM ===");
     
     res.status(201).json({
       success: true,
